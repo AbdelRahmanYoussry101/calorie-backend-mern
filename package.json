@@ -1,8 +1,8 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "index.js",
   "type": "module",
+  "main": "Server.js",
   "scripts": {
     "start": "node Server.js"
   },
@@ -11,14 +11,15 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "bcrypt": "^6.0.0",
-    "cloudinary": "^2.7.0",
+    "bcrypt": "^5.1.1",
+    "cloudinary": "^1.41.0",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "helmet": "^8.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.0",
+    "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.19.1",
-    "multer": "^2.0.2"
+    "mongoose": "^8.3.0",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2"
   }
 }

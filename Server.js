@@ -2,13 +2,18 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
-import user from "./models/user.js";
-import Profile from "./models/profile.js";
-import bcrypt from "bcrypt";
 import multer from "multer";
 import jwt from "jsonwebtoken";
 import helmet from "helmet";
 import { v2 as cloudinary } from "cloudinary";
+import UserStats from "./models/UserStats.js";
+import DUser from "./models/DUser.js";
+import { registerUser } from "./Contoller/register.js";
+import { analyzeFood } from "./Contoller/foodAnalyzer.js";
+import {getNutrition} from "./Contoller/getCalories.js"
+import { isNewWeek,isNewDay } from "./Contoller/datecheker.js";
+import { login } from "./Contoller/login.js";
+import {addMealToProfile} from "./Contoller/addFoodProfile.js"
 dotenv.config();
 
 
@@ -17,7 +22,7 @@ app.use(helmet());
 
 const allowedOrigins = [
   "http://localhost:3000",  // dev
-  "https://portfoliofun.netlify.app"// production
+  "https://portfoliofun.netlify.app"// react server
 ];
 
 app.use(cors({
@@ -67,7 +72,7 @@ function verifyToken(req, res, next) {
   if (!token) {
     return res.status(401).json({ message: "No token provided" });
   }
-
+ 
   jwt.verify(token, process.env.JWT_Private_key, (err, decodedUser) => {
     if (err) {
       return res.status(403).json({ message: "Invalid or expired token" });
@@ -79,226 +84,212 @@ function verifyToken(req, res, next) {
 }
 
 export default verifyToken;
-//upload picture backend
-app.post("/upload",verifyToken,upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-
-    // upload to cloudinary using upload_stream
-    const uploadStream = cloudinary.uploader.upload_stream(
-      { folder: "profiles" },
-      async (error, result) => {
-        if (error) {
-          console.error(error);
-          return res.status(500).json({ error: "Upload to Cloudinary failed" });
-        }
-
-        // save image URL to MongoDB
-        const profile = await Profile.findOneAndUpdate(
-          { userId: req.user.id},
-          { link: result.secure_url },
-          { new: true }
-        );
-
-        if (!profile) return res.status(404).json({ error: "Profile not found" });
-        
-        res.json({
-          message: "Profile picture updated successfully!",
-          imageUrl: result.secure_url,
-        });
-      }
-    );
-
-    // pipe file buffer to cloudinary upload
-    uploadStream.end(req.file.buffer);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-app.post("/add-user", async function (req, res) {
-  try {
-    const hashedPassword = await bcrypt.hash(req.body.password, 10);
-    const newUser = new user({
-      name: req.body.name,
-      email: req.body.email,
-      password: hashedPassword,
-    });
-    await newUser.save();
-
-    const newProfile = new Profile({
-      userId: newUser._id
-    });
-    await newProfile.save();
-
-    res.status(201).json({ message: "User created successfully!" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error creating user" });
-  }
-});
-app.get("/profile", verifyToken, async function (req, res) {
-  try {
-    const profile = await Profile.findOne({ userId: req.user.id });
-
-    if (!profile) {
-      return res.status(404).send("Profile not found");
-    }
-
-    res.json(profile);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Error fetching profile");
-  }
-});
-
-//get user admin
-app.get("/user", verifyToken, async function (req, res) {
-  try {
-    const userId = req.user.id; // ✅ not _id
-    const existingUser = await user.findById(userId);
-
-    if (!existingUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    res.json({
-      id: existingUser._id,
-      name: existingUser.name,
-      isAdmin: existingUser.isAdmin || false,
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error fetching user" });
-  }
-});
 
 
-// get all users
-app.get("/get-users", async function (req, res) {
-  try {
-    const users = await user.find();
-    res.json(users);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error fetching users" });
-  }
-});
+app.post("/reg",registerUser);
+
+app.post("/login",login);
 
 
-// Get all profiles
-app.get("/profiles", async (req, res) => {
-  try {
-    const profiles = await Profile.find(); // get all profiles
-    res.json(profiles);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Server error while fetching profiles");
-  }
-});
+//PROFILE BACKEND
 
-// login
-app.post("/login", async function (req, res) {
-  try {
-    const { email, password } = req.body;
-
-    // Check if user exists
-    const existingUser = await user.findOne({ email });
-    if (!existingUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Check password
-    const isMatch = await bcrypt.compare(password, existingUser.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    // ✅ Create JWT token
-    const token = jwt.sign(
-      { id: existingUser._id, email: existingUser.email },
-      process.env.JWT_Private_key,
-      { expiresIn: "2h" }
-    );
-    
-    // ✅ Send token and user info to frontend
-    res.json({
-      message: "Login successful",
-      token, // <-- this is what you’ll store in localStorage
-      user: {
-        id: existingUser._id,
-        name: existingUser.name,
-        email: existingUser.email,
-      },
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error logging in" });
-  }
-});
-
-function extractPublicId(url) {
-  const match = url.match(/\/upload\/(?:v\d+\/)?([^\.]+)/);
-  return match ? match[1] : null;
-}
-
-
-app.delete("/deleteUser/:id", verifyToken, async (req, res) => {
-  try {
-    const requester = await user.findById(req.user.id);
-    const targetId = req.params.id;
-    
-    if (!requester || !requester.isAdmin) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    const targetProfile = await Profile.findOne({ userId: targetId });
-    if (targetProfile?.link) {
-      const publicId = extractPublicId(targetProfile.link);
-      if (publicId) {
-        await cloudinary.uploader.destroy(publicId);
-        console.log(`🧹 Deleted image: ${publicId}`);
-      }
-    }
-
-    
-    
-  
-    // delete the user and their profile
-    await user.findByIdAndDelete(targetId);
-    await Profile.findOneAndDelete({ userId: targetId });
-
-    res.json({ message: "User deleted successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error deleting user" });
-  }
-});
-
-app.put("/update-profile",verifyToken, async function (req, res) {
+app.get("/profile", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { name,age, biography } = req.body;
 
-    const profile = await Profile.findOne({ userId: userId });
-    if (!profile) {
-      res.status(404).send("Profile not found");
-      return;
+    let userStat = await UserStats.findOne({ userId });
+    if (!userStat) {
+      userStat = await UserStats.create({
+        userId,
+        goalCalories: 2000,
+        goalProtein: 150,
+        totalCalories: 0,
+        totalProtein: 0,
+        dailyStats: [],
+      });
     }
-    if(name) profile.name = name;
-    if (age) profile.age = age;
-    if (biography) profile.biography = biography;
-
-    await profile.save();
-
-    res.json(profile);//to make it readable
+    if (isNewWeek(userStat.weekStart)) {
+      userStat.weekStart = new Date();
+      userStat.totalCalories = 0;
+      userStat.totalProtein = 0;
+      userStat.dailyStats = [];
+      await userStat.save();
+      console.log("🔄 Weekly stats reset!");
+    }
+    const lastEntry = userStat.dailyStats[userStat.dailyStats.length - 1];
+    if (!lastEntry || isNewDay(lastEntry.date)) {
+      userStat.dailyStats.push({
+        date: new Date(),
+        calories: 0,
+        protein: 0,
+      });
+      await userStat.save();
+    }
+    
+    res.json(userStat);
   } catch (error) {
-    console.error(error);
-    res.status(500).send("Error updating profile");
+    console.error("Profile fetch error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
+
+
+app.post("/updateGoals", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { goalCalories, goalProtein } = req.body;
+
+    // ✅ Use null/undefined check instead of falsy check
+    if (goalCalories == null || goalProtein == null) {
+      return res.status(400).json({ error: "Missing goal values" });
+    }
+
+    // ✅ Update user's stats
+    const userStat = await UserStats.findOneAndUpdate(
+      { userId },
+      { goalCalories, goalProtein },
+      { new: true }
+    );
+
+    // ✅ If no stats exist, create them automatically
+    if (!userStat) {
+      const newStat = new UserStats({
+        userId,
+        goalCalories,
+        goalProtein,
+        weekStart: new Date().toISOString().split("T")[0],
+        totalCalories: 0,
+        totalProtein: 0,
+        dailyStats: [],
+      });
+      await newStat.save();
+      return res.json(newStat);
+    }
+
+    res.json(userStat);
+  } catch (err) {
+    console.error("Error updating goals:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+app.post("/analyzeFood",verifyToken,upload.single("image"), analyzeFood);
+app.post("/addMeal", verifyToken, addMealToProfile);
+
+app.post("/reset-day",verifyToken,async (req, res) => {
+  const userId = req.user.id;
+  const today = new Date().toDateString();
+
+  try {
+    const user = await UserStats.findOne({ userId });
+
+    // Find today's entry
+    const todayEntry = user.dailyStats.find(
+      (d) => new Date(d.date).toDateString() === today
+    );
+
+    if (!todayEntry) {
+      return res.status(404).json({ message: "No entry for today found" });
+    }
+
+    // Subtract today's values from totals
+    user.totalCalories -= todayEntry.calories;
+    user.totalProtein -= todayEntry.protein;
+
+    // Reset today's values
+    todayEntry.calories = 0;
+    todayEntry.protein = 0;
+
+    await user.save();
+    res.json({ message: "Today's stats reset successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/reset-week", verifyToken, async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    
+    const user = await UserStats.findOne({ userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const weekStart = new Date(user.weekStart);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    // Separate entries that are in this week
+    const weekEntries = user.dailyStats.filter(day => {
+      const dayDate = new Date(day.date);
+      return dayDate >= weekStart && dayDate < weekEnd;
+    });
+
+    // Subtract their totals
+    weekEntries.forEach(day => {
+      user.totalCalories -= day.calories;
+      user.totalProtein -= day.protein;
+    });
+
+    // Keep only entries that are *outside* this week
+    user.dailyStats = user.dailyStats.filter(day => {
+      const dayDate = new Date(day.date);
+      return dayDate < weekStart || dayDate >= weekEnd;
+    });
+
+    await user.save();
+    res.json({ message: "This week's stats reset and removed successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// analyzeText route (matching structure)
+app.post("/analyzeText", verifyToken, async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: "Missing food name" });
+    }
+
+    const nutrition = await getNutrition(query);
+
+    if (!nutrition || !nutrition.items || nutrition.items.length === 0) {
+      return res.status(404).json({
+        error: "No nutrition data found for this food name.",
+      });
+    }
+
+    // ✅ Match analyzeFood response
+    res.json({ nutrition });
+  } catch (err) {
+    console.error("Error in /analyzeText:", err.message);
+    res.status(500).json({ error: "Failed to analyze text" });
+  }
+});
+
+
+
+app.post("/reset-all", verifyToken, async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const user = await UserStats.findOne({ userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Clear the daily stats array
+    user.dailyStats = [];
+    user.totalCalories = 0;
+    user.totalProtein = 0;
+
+    await user.save();
+    res.json({ message: "All daily stats removed successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, function () {
