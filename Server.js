@@ -20,9 +20,8 @@ import mongoose from "mongoose";
 const app = express();
 app.use(helmet());
 
-const allowedOrigins = [
-  "http://localhost:3000",  // dev
-  // react server
+const allowedOrigins = [  // dev
+  "https://calorie-tracker-v.netlify.app/" // react server
 ];
 
 app.use(cors({
