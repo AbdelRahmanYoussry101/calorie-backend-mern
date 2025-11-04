@@ -21,7 +21,7 @@ const app = express();
 app.use(helmet());
 
 const allowedOrigins = [  // dev
-  "https://calorie-tracker-v.netlify.app/" // react server
+  "https://calorie-tracker-v.netlify.app" // react server
 ];
 
 app.use(cors({
