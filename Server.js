@@ -1,5 +1,4 @@
-import express from "express";
-import mongoose from "mongoose";
+dotenv.config();
 import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
@@ -14,7 +13,8 @@ import {getNutrition} from "./Contoller/getCalories.js"
 import { isNewWeek,isNewDay } from "./Contoller/datecheker.js";
 import { login } from "./Contoller/login.js";
 import {addMealToProfile} from "./Contoller/addFoodProfile.js"
-dotenv.config();
+import express from "express";
+import mongoose from "mongoose";
 
 
 const app = express();
@@ -22,7 +22,7 @@ app.use(helmet());
 
 const allowedOrigins = [
   "http://localhost:3000",  // dev
-  "https://portfoliofun.netlify.app"// react server
+  // react server
 ];
 
 app.use(cors({
